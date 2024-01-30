@@ -18,28 +18,33 @@ class cross_scale_trans(nn.Module):
         self.n_points = model_cfg.N_POINTS
         self.d_chl = model_cfg.D_backbone
         self.n_levels = 4
-        self.input_proj = []
+
         self.sampling_offsets = []
         self.attention_weights = []
         self.query_proj = []
         self.value_proj = []
 
-        for i in range(self.n_levels):
-            self.input_proj.append(nn.Sequential(
-                nn.Linear(self.d_chl[i], self.d_model),
-                nn.GroupNorm(self.d_chl[i], self.d_model)).to("cuda:0"))
-            self.sampling_offsets.append(
-                nn.Linear(self.d_chl[i], self.n_heads * self.n_points[i] * 3).to("cuda:0")
-            )
-            self.attention_weights.append(
-                nn.Linear(self.d_chl[i], self.n_heads * self.n_points[i]).to("cuda:0")
-            )
-            self.query_proj.append(
-                nn.Linear(self.d_model, self.d_chl[i]).to("cuda:0")
-            )
-            self.value_proj.append(
-                nn.Linear(self.d_model, self.d_chl[i]).to("cuda:0")
-            )
+        self.input_proj = nn.ModuleList([
+            nn.Sequential(
+            nn.Linear(self.d_chl[i], self.d_model),
+            nn.GroupNorm(self.d_chl[i], self.d_model)
+            ) for i in range(self.n_levels)])
+
+        self.sampling_offsets = nn.ModuleList([
+            nn.Linear(self.d_chl[i], self.n_heads * self.n_points[i] * 3)
+            for i in range(self.n_levels)])
+
+        self.attention_weights = nn.ModuleList([
+            nn.Linear(self.d_chl[i], self.n_heads * self.n_points[i])
+            for i in range(self.n_levels)])
+
+        self.query_proj = nn.ModuleList([
+            nn.Linear(self.d_model, self.d_chl[i])
+            for i in range(self.n_levels)])
+
+        self.value_proj = nn.ModuleList([
+            nn.Linear(self.d_model, self.d_chl[i])
+            for i in range(self.n_levels)])
 
 
         # self._reset_parameters()
