@@ -1,14 +1,14 @@
 from .detector3d_template import DetectorFusionTemplate
 from .. import backbones_3d
-
+import time
 
 
 class DT_Trans(DetectorFusionTemplate):
     def __init__(self, model_cfg, num_class, dataset):
         super().__init__(model_cfg=model_cfg, num_class=num_class, dataset=dataset)
         self.module_topology = [
-                        'vfe', 'backbone_3d', 'cross_scale_trans', 'map_to_bev_module', 'pfe',
-                        'backbone_2d', 'dense_head', 'point_head', 'roi_head'
+                        'vfe', 'backbone_3d', 'cross_scale_trans', 'map_to_bev_module', 'pfe','backbone_2d',
+                        'dense_head', 'point_head', 'roi_head'
                     ]
         self.module_list = self.build_networks()
 
@@ -29,6 +29,7 @@ class DT_Trans(DetectorFusionTemplate):
         batch_dict = self.map_to_bev_module(batch_dict)
         batch_dict = self.backbone_2d(batch_dict)
         batch_dict = self.dense_head(batch_dict)
+
 
         batch_dict = self.roi_head.proposal_layer(
             batch_dict, nms_config=self.roi_head.model_cfg.NMS_CONFIG['TRAIN' if self.training else 'TEST']

@@ -15,7 +15,7 @@ INFO_PATH: {
 }
 
 GET_ITEM_LIST: ["points","images", "calib_matricies"]
-FOV_POINTS_ONLY: True
+FOV_POINTS_ONLY: Ture
 
 DATA_AUGMENTOR:
     DISABLE_AUG_LIST: ['placeholder']
