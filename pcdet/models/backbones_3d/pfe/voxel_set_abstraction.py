@@ -470,6 +470,7 @@ class VoxelSetAbstraction(nn.Module):
             cur_coords = batch_dict['multi_scale_3d_features'][src_name].indices
             cur_features = batch_dict['multi_scale_3d_features'][src_name].features.contiguous()
 
+
             xyz = common_utils.get_voxel_centers(
                 cur_coords[:, 1:4], downsample_times=self.downsample_times_map[src_name],
                 voxel_size=self.voxel_size, point_cloud_range=self.point_cloud_range

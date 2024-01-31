@@ -7,7 +7,9 @@ class DT_Trans(DetectorFusionTemplate):
     def __init__(self, model_cfg, num_class, dataset):
         super().__init__(model_cfg=model_cfg, num_class=num_class, dataset=dataset)
         self.module_topology = [
-                        'vfe', 'backbone_3d', 'cross_scale_trans', 'map_to_bev_module', 'pfe','backbone_2d',
+                        'vfe', 'backbone_3d',
+            'cross_scale_trans',
+            'map_to_bev_module', 'pfe','backbone_2d',
                         'dense_head', 'point_head', 'roi_head'
                     ]
         self.module_list = self.build_networks()
