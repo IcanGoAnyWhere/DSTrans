@@ -13,11 +13,14 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
     if total_it_each_epoch == len(train_loader):
         dataloader_iter = iter(train_loader)
 
+    # scaler = torch.cuda.amp.GradScaler(enabled=False, init_scale=optim_cfg.get('LOSS_SCALE_FP16', 2.0 ** 16))
+
     if rank == 0:
         pbar = tqdm.tqdm(total=total_it_each_epoch, leave=leave_pbar, desc='train', dynamic_ncols=True)
         data_time = common_utils.AverageMeter()
         batch_time = common_utils.AverageMeter()
         forward_time = common_utils.AverageMeter()
+
 
     for cur_it in range(total_it_each_epoch):
         end = time.time()
@@ -41,25 +44,30 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
         if tb_log is not None:
             tb_log.add_scalar('meta_data/learning_rate', cur_lr, accumulated_iter)
 
+
         model.train()
+        optimizer.zero_grad()
+        with torch.cuda.amp.autocast(enabled=False):
+            loss, tb_dict, disp_dict = model_func(model, batch)
 
+        # loss, tb_dict, disp_dict = model_func(model, batch)
 
-        loss, tb_dict, disp_dict = model_func(model, batch)
-
+        accumulation_steps = 16
         forward_timer = time.time()
         cur_forward_time = forward_timer - data_timer
-        loss_batch = loss
-        loss_batch.backward()
+        loss = loss / accumulation_steps
+        loss.backward()
         clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
 
-        optimizer.step()
-        optimizer.zero_grad()
+        # optimizer.step()
+        # optimizer.zero_grad()
 
-        # if cur_it !=0:
-        #     if cur_it % 16 ==0 or cur_it ==len(train_loader):
-        #
-        #         optimizer.step()
-        #         optimizer.zero_grad()
+        if cur_it !=0:
+            if cur_it % accumulation_steps ==0 or cur_it ==len(train_loader):
+                optimizer.step()
+                optimizer.zero_grad()
+
+
 
         accumulated_iter += 1
 
