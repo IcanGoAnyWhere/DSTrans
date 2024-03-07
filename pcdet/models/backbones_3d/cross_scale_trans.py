@@ -65,11 +65,11 @@ class cross_scale_trans(nn.Module):
             sampling_offsets = self.sampling_offsets[num](query) \
                 .view(-1, self.n_heads, self.n_points[num], 3)
             # test_2 =self.attention_weights[num](query)
-            # attention_weights = torch.softmax(self.attention_weights[num](query)\
-            #     .view(-1, self.n_heads, self.n_points[num]), -1)
+            attention_weights = torch.softmax(self.attention_weights[num](query)\
+                .view(-1, self.n_heads, self.n_points[num]), -1)
 
-            attention_weights = self.attention_weights[num](query) \
-                .view(-1, self.n_heads, self.n_points[num])
+            # attention_weights = self.attention_weights[num](query) \
+            #     .view(-1, self.n_heads, self.n_points[num])
 
             # test_1 = attention_weights[1,1,:]
 
@@ -95,7 +95,7 @@ class cross_scale_trans(nn.Module):
             # \\norm grid to [-1,1]
             sampling_grids = 2 * sampling_locations - 1
             sampling_value_l_ = F.grid_sample(crt_value_epd_l, sampling_grids,
-                                              mode='bilinear', padding_mode='zeros', align_corners=False)
+                                              mode='nearest', padding_mode='zeros', align_corners=False)
 
             out = (sampling_value_l_ * attention_weights[None, None, :, :, :]).sum(-1).transpose(1, 2).sum(-1)
 

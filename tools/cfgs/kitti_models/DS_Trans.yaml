@@ -33,8 +33,8 @@ DATA_CONFIG:
             - NAME: random_local_scaling
               LOCAL_SCALE_RANGE: [ 0.9, 1.1 ]
 
-#            - NAME: random_local_rotation
-#              LOCAL_ROT_ANGLE: [-0.37, 0.57]
+            - NAME: random_local_rotation
+              LOCAL_ROT_ANGLE: [-0.17, 0.17]
 
             - NAME: random_local_translation
               ALONG_AXIS_LIST: ['x','y']
@@ -249,7 +249,7 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 1
-    NUM_EPOCHS: 40
+    NUM_EPOCHS: 20
 
     OPTIMIZER: adam_onecycle
     LR: 0.01
