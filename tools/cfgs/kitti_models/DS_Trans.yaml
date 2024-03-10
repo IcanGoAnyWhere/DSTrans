@@ -55,6 +55,8 @@ MODEL:
         N_HEADS: 4
         N_POINTS: [32, 16, 8, 4]
         D_backbone: [16, 32, 64, 64]
+        Dropout: 0.1
+        D_ffn: 256
 
     MAP_TO_BEV:
         NAME: HeightCompression
@@ -249,7 +251,7 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 1
-    NUM_EPOCHS: 20
+    NUM_EPOCHS: 45
 
     OPTIMIZER: adam_onecycle
     LR: 0.01
