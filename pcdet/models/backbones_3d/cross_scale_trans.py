@@ -35,6 +35,15 @@ class cross_scale_trans(nn.Module):
         self.norm3 = nn.ModuleList()
         self.dynamic_pe = DynamicLearnablePositionalEncoding(self.d_model)
         self.fusion_module = nn.ModuleList()
+        # \\spconv output
+        norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
+        self.conv_out = spconv.SparseSequential(
+            # [200, 150, 5] -> [200, 150, 2]
+            spconv.SparseConv3d(64, 128, (3, 1, 1), stride=(2, 1, 1), padding=0,
+                                bias=False, indice_key='spconv_down2'),
+            norm_fn(128),
+            nn.ReLU(),
+        )
 
         for i in range(self.n_levels):
             self.input_proj.append(nn.Sequential(
@@ -42,11 +51,11 @@ class cross_scale_trans(nn.Module):
                 nn.GroupNorm(self.d_chl[i], self.d_model)
             ))
 
-            self.sampling_offsets.append(nn.Linear(self.d_chl[i], self.n_heads * self.n_points[i] * 3))
-            self.attention_weights.append(nn.Linear(self.d_chl[i], self.n_heads * self.n_points[i]))
+            self.sampling_offsets.append(nn.Linear(self.d_chl[i], self.n_heads * self.n_points * 3))
+            self.attention_weights.append(nn.Linear(self.d_chl[i], self.n_heads * self.n_points))
             self.query_proj.append(nn.Linear(self.d_model, self.d_chl[i]))
             self.value_proj.append(nn.Linear(self.d_model, self.d_chl[i]))
-            self.output_proj.append(nn.Linear(self.d_chl[i], self.d_chl[i]))
+            self.output_proj.append(nn.Linear(self.d_chl[i] * self.n_heads, self.d_chl[i]))
             self.dropout.append(nn.Dropout(model_cfg.Dropout))
             self.norm.append(nn.LayerNorm(self.d_chl[i]))
 
@@ -62,14 +71,27 @@ class cross_scale_trans(nn.Module):
         self._reset_parameters()
 
     def _reset_parameters(self):
+        neighbor_offsets = torch.tensor([
+            [x, y, z] for x in [-1, 0, 1] for y in [-1, 0, 1] for z in [-1, 0, 1]
+            if not (x == 0 and y == 0 and z == 0)
+        ], dtype=torch.float32)
+
+        # 重复每个偏置以适应n_heads，确保每个注意力头都具有相同的初始邻居偏置
+        repeated_offsets = neighbor_offsets.repeat(self.n_heads, 1)
+
+        for layer in self.sampling_offsets:
+            # 注意：这里假设layer.bias是一个可调整大小的参数
+            # 将repeated_offsets平铺为一维向量以匹配bias的形状
+            layer.bias.data = repeated_offsets.view(-1)
+
         for i in range(self.n_levels):
-            constant_(self.sampling_offsets[i].weight.data, 0.)
-            constant_(self.attention_weights[i].weight.data, 0.)
-            constant_(self.attention_weights[i].bias.data, 0.)
-            xavier_uniform_(self.value_proj[i].weight.data)
-            constant_(self.value_proj[i].bias.data, 0.)
-            xavier_uniform_(self.output_proj[i].weight.data)
-            constant_(self.output_proj[i].bias.data, 0.)
+                constant_(self.sampling_offsets[i].weight.data, 0.)
+                constant_(self.attention_weights[i].weight.data, 0.)
+                constant_(self.attention_weights[i].bias.data, 0.)
+                xavier_uniform_(self.value_proj[i].weight.data)
+                constant_(self.value_proj[i].bias.data, 0.)
+                xavier_uniform_(self.output_proj[i].weight.data)
+                constant_(self.output_proj[i].bias.data, 0.)
 
     def forward_ffn(self, tgt, num):
         tgt2 = self.linear2[num](self.dropout3[num](F.relu(self.linear1[num](tgt))))
@@ -98,12 +120,10 @@ class cross_scale_trans(nn.Module):
             query = self.query_proj[num](src)
             value = self.value_proj[num](src)
 
-            sampling_offsets = torch.sigmoid(self.sampling_offsets[num](query)) \
-                .view(-1, self.n_heads, self.n_points[num], 3) / 2.0
-
+            sampling_offsets = (self.sampling_offsets[num](query)) \
+                .view(-1, self.n_heads, self.n_points, 3)
             attention_weights = torch.softmax(self.attention_weights[num](query) \
-                .view(-1, self.n_heads, self.n_points[num]), -1)
-
+                .view(-1, self.n_heads, self.n_points), -1)
 
             # \\crt_normalizer is uesd to norm cood to [0,1]
 
@@ -123,9 +143,7 @@ class cross_scale_trans(nn.Module):
 
 
             # \\norm paras to [0,1]
-            # crt_offset = sampling_offsets / (crt_normalizer-1)
-
-            sampling_locations = sampling_offsets + voxel_coods[:, None, None, :]
+            sampling_locations = (sampling_offsets + crt_indice[:, None, None, :]) / (crt_normalizer - 1)
             swap_matrix = torch.tensor([[0.0, 0.0, 1.0],
                                         [0.0, 1.0, 0.0],
                                         [1.0, 0.0, 0.0]], device=value.device)
@@ -136,9 +154,15 @@ class cross_scale_trans(nn.Module):
             sampling_grids = 2 * sampling_locations - 1
             sampling_value_l_ = F.grid_sample(crt_value_epd_l, sampling_grids,
                                               mode='bilinear', padding_mode='zeros', align_corners=True)
+            # test_1 = sampling_value_l_[:,:,0,0,0]
+            # sampling_value_l_ = sampling_value_l_.transpose(1,-1)
 
-            out = (sampling_value_l_ * attention_weights[None, None, :, :, :]).sum(-1).transpose(1, 2).sum(-1)
-            out = out.reshape(src_shape, self.d_chl[num]).contiguous()
+            out = (sampling_value_l_ * attention_weights[None, None, :, :, :])
+            out = out.sum(-1).squeeze(0)
+            out = out.transpose(0, 1).transpose(1, 2)
+            out = out.flatten(-2)
+
+            # out = out.reshape(src_shape, self.d_chl[num]).contiguous()
 
             out = self.output_proj[num](out)
             tgt = query + self.dropout[num](out)
@@ -147,7 +171,6 @@ class cross_scale_trans(nn.Module):
 
             fused_features = self.fusion_module[num](ms_features[lvl].features, tgt)
 
-            # tgt = ms_features[lvl].features + tgt
 
             ms_features[lvl] = ms_features[lvl].replace_feature(fused_features)
 
@@ -163,6 +186,11 @@ class cross_scale_trans(nn.Module):
 
             # --------------------------------
             # ==========debug=================
+        out_bev = self.conv_out(ms_features[lvl])
+        batch_dict.update({
+            'encoded_spconv_tensor': out_bev,
+            'encoded_spconv_tensor_stride': 8
+        })
 
         return batch_dict
 
