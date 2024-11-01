@@ -8,22 +8,31 @@ from ...utils.spconv_utils import replace_feature, spconv
 from torch.nn.init import xavier_uniform_, constant_
 import math
 import time
-
+tv = None
+try:
+    import cumm.tensorview as tv
+except:
+    pass
 
 class cross_scale_trans(nn.Module):
     def __init__(self, model_cfg):
         super().__init__()
-        self.d_model = model_cfg.D_QUERY
+
         self.n_heads = model_cfg.N_HEADS
         self.n_points = model_cfg.N_POINTS
         self.d_chl = model_cfg.D_backbone
         self.n_levels = 4
+        self.dist = model_cfg.Dist
+
+        self.d_model = model_cfg.D_embed
+
 
         self.input_proj = nn.ModuleList()
         self.sampling_offsets = nn.ModuleList()
         self.attention_weights = nn.ModuleList()
         self.query_proj = nn.ModuleList()
         self.value_proj = nn.ModuleList()
+        self.key_proj = nn.ModuleList()
         self.output_proj = nn.ModuleList()
         self.dropout = nn.ModuleList()
         self.norm = nn.ModuleList()
@@ -35,6 +44,7 @@ class cross_scale_trans(nn.Module):
         self.norm3 = nn.ModuleList()
         self.dynamic_pe = DynamicLearnablePositionalEncoding(self.d_model)
         self.fusion_module = nn.ModuleList()
+
         # \\spconv output
         norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
         self.conv_out = spconv.SparseSequential(
@@ -47,47 +57,31 @@ class cross_scale_trans(nn.Module):
 
         for i in range(self.n_levels):
             self.input_proj.append(nn.Sequential(
-                nn.Linear(self.d_chl[i], self.d_model),
-                nn.GroupNorm(self.d_chl[i], self.d_model)
+                nn.Linear(self.d_chl[i], self.d_model)
             ))
 
-            self.sampling_offsets.append(nn.Linear(self.d_chl[i], self.n_heads * self.n_points * 3))
-            self.attention_weights.append(nn.Linear(self.d_chl[i], self.n_heads * self.n_points))
-            self.query_proj.append(nn.Linear(self.d_model, self.d_chl[i]))
-            self.value_proj.append(nn.Linear(self.d_model, self.d_chl[i]))
-            self.output_proj.append(nn.Linear(self.d_chl[i] * self.n_heads, self.d_chl[i]))
+            self.query_proj.append(nn.Linear(self.d_model, self.d_model))
+            self.value_proj.append(nn.Linear(self.d_model, self.d_model))
+            self.key_proj.append(nn.Linear(self.d_model, self.d_model))
+
+            self.output_proj.append(nn.Linear(self.d_model, self.d_model))
             self.dropout.append(nn.Dropout(model_cfg.Dropout))
-            self.norm.append(nn.LayerNorm(self.d_chl[i]))
+            self.norm.append(nn.LayerNorm(self.d_model))
 
             # \\ffn
-            self.linear1.append(nn.Linear(self.d_chl[i], model_cfg.D_ffn))
+            self.linear1.append(nn.Linear(self.d_model, model_cfg.D_ffn))
             self.dropout3.append(nn.Dropout(model_cfg.Dropout))
-            self.linear2.append(nn.Linear(model_cfg.D_ffn, self.d_chl[i]))
+            self.linear2.append(nn.Linear(model_cfg.D_ffn, self.d_model))
             self.dropout4.append(nn.Dropout(model_cfg.Dropout))
-            self.norm3.append(nn.LayerNorm(self.d_chl[i]))
+            self.norm3.append(nn.LayerNorm(self.d_model))
 
-            self.fusion_module.append(EnhancedFusion(self.d_chl[i] * 2, self.d_chl[i]))
-
+            self.fusion_module.append(EnhancedFusion(self.d_model + self.d_chl[i], self.d_chl[i]))
         self._reset_parameters()
 
+
     def _reset_parameters(self):
-        neighbor_offsets = torch.tensor([
-            [x, y, z] for x in [-1, 0, 1] for y in [-1, 0, 1] for z in [-1, 0, 1]
-            if not (x == 0 and y == 0 and z == 0)
-        ], dtype=torch.float32)
-
-        # 重复每个偏置以适应n_heads，确保每个注意力头都具有相同的初始邻居偏置
-        repeated_offsets = neighbor_offsets.repeat(self.n_heads, 1)
-
-        for layer in self.sampling_offsets:
-            # 注意：这里假设layer.bias是一个可调整大小的参数
-            # 将repeated_offsets平铺为一维向量以匹配bias的形状
-            layer.bias.data = repeated_offsets.view(-1)
 
         for i in range(self.n_levels):
-                constant_(self.sampling_offsets[i].weight.data, 0.)
-                constant_(self.attention_weights[i].weight.data, 0.)
-                constant_(self.attention_weights[i].bias.data, 0.)
                 xavier_uniform_(self.value_proj[i].weight.data)
                 constant_(self.value_proj[i].bias.data, 0.)
                 xavier_uniform_(self.output_proj[i].weight.data)
@@ -106,70 +100,42 @@ class cross_scale_trans(nn.Module):
             # \\get input vector with same dim
             features = ms_features[lvl].features
             src = self.input_proj[num](features)
+            src_shape = src.shape[0]
             #  \\position encode
-            crt_indice = ms_features[lvl].indices
-            crt_indice = crt_indice[:, 1:4].float()
             fea_shape = ms_features[lvl].spatial_shape
             crt_normalizer = torch.tensor(fea_shape, device=src.device)
+            crt_indice = ms_features[lvl].indices
+            crt_indice = crt_indice[:, 1:4].float()
             voxel_coods = crt_indice / (crt_normalizer - 1)
             positional_encodings = self.dynamic_pe(voxel_coods)
             src += positional_encodings
 
-            src_shape = src.shape[0]
+            neighboring_coords, neighboring_features = find_neighboring_voxels(crt_indice, src, self.n_points[num],
+                                                                               self.dist[num])
+
             # \\get query and value
-            query = self.query_proj[num](src)
-            value = self.value_proj[num](src)
+            query = self.query_proj[num](neighboring_features[:, 0:1, :])
+            key = self.key_proj[num](neighboring_features)
+            value = self.value_proj[num](neighboring_features)
 
-            sampling_offsets = (self.sampling_offsets[num](query)) \
-                .view(-1, self.n_heads, self.n_points, 3)
-            attention_weights = torch.softmax(self.attention_weights[num](query) \
-                .view(-1, self.n_heads, self.n_points), -1)
+            query = query.view(-1, self.n_heads, 1, self.d_model // self.n_heads)
+            key = key.view(-1, self.n_heads, self.n_points[num], self.d_model // self.n_heads)
+            value = value.view(-1, self.n_heads, self.n_points[num], self.d_model // self.n_heads)
 
-            # \\crt_normalizer is uesd to norm cood to [0,1]
+            attention_scores = torch.matmul(query, key.transpose(-2, -1)) / (self.d_model ** 0.5)  # [N, H, 1, M]
+            attention_weights = F.softmax(attention_scores, dim=-1)  # [N, H, 1, M]
 
-            value_epd_shape = torch.cat((torch.tensor(value.shape[1],
-                                                      device=value.device).unsqueeze(0), crt_normalizer), dim=0)
+            head_output = torch.matmul(attention_weights, value)  # [N, H, 1, head_dim]
+            head_output = head_output.squeeze(2)  # [N, H, head_dim]
+            concat_output = head_output.view(-1, self.d_model)
 
-
-            # \\expand value to complete cube with zeros, for meeting grid_sample input
-
-            crt_value_epd = torch.full(list(value_epd_shape), 1e-6, device=crt_indice.device)
-            crt_value_epd[:, crt_indice[:, 0].long(), crt_indice[:, 1].long(),\
-                crt_indice[:, 2].long()] = value.transpose(0, 1)
-            crt_value_epd_l = crt_value_epd.unsqueeze(0)
-            # fea_test = ms_features[lvl].dense()
-            # aa = crt_value_epd_l[:,:,25,407,156]
-            # bb = fea_test[:,:,25,407,156]
-
-
-            # \\norm paras to [0,1]
-            sampling_locations = (sampling_offsets + crt_indice[:, None, None, :]) / (crt_normalizer - 1)
-            swap_matrix = torch.tensor([[0.0, 0.0, 1.0],
-                                        [0.0, 1.0, 0.0],
-                                        [1.0, 0.0, 0.0]], device=value.device)
-            sampling_locations_swap = torch.matmul(sampling_locations, swap_matrix)
-            sampling_locations = sampling_locations_swap.unsqueeze(0)
-
-            # \\norm grid to [-1,1]
-            sampling_grids = 2 * sampling_locations - 1
-            sampling_value_l_ = F.grid_sample(crt_value_epd_l, sampling_grids,
-                                              mode='bilinear', padding_mode='zeros', align_corners=True)
-            # test_1 = sampling_value_l_[:,:,0,0,0]
-            # sampling_value_l_ = sampling_value_l_.transpose(1,-1)
-
-            out = (sampling_value_l_ * attention_weights[None, None, :, :, :])
-            out = out.sum(-1).squeeze(0)
-            out = out.transpose(0, 1).transpose(1, 2)
-            out = out.flatten(-2)
-
-            # out = out.reshape(src_shape, self.d_chl[num]).contiguous()
-
-            out = self.output_proj[num](out)
-            tgt = query + self.dropout[num](out)
+            # query_ = query.view(-1, self.n_heads*self.d_chl[num])
+            out = self.output_proj[num](concat_output)
+            tgt = src + self.dropout[num](out)
             tgt = self.norm[num](tgt)
             tgt = self.forward_ffn(tgt, num)
 
-            fused_features = self.fusion_module[num](ms_features[lvl].features, tgt)
+            fused_features = self.fusion_module[num](features, tgt)
 
 
             ms_features[lvl] = ms_features[lvl].replace_feature(fused_features)
@@ -178,8 +144,11 @@ class cross_scale_trans(nn.Module):
             # --------------------------------
 
             # import open3d
-            # samplingpoints = sampling_offsets[1, 1, :, :].view(-1, 3)
-            # pointshow = crt_indice.cpu().numpy()
+            # samplingpoints = sampling_locations[1,:,:,:]
+            # samplingpoints = samplingpoints.view(-1, 3).detach().cpu().numpy()
+            # pointshow = crt_indice.view(-1, 3).cpu().numpy()
+            # merged_array = np.concatenate((samplingpoints, pointshow), axis=0)
+            #
             # point_cloud = open3d.geometry.PointCloud()
             # point_cloud.points = open3d.utility.Vector3dVector(pointshow)
             # open3d.visualization.draw_geometries([point_cloud])
@@ -226,3 +195,37 @@ class DynamicLearnablePositionalEncoding(nn.Module):
         x = self.activation(x)
         positional_encodings = self.linear2(x)
         return positional_encodings
+
+
+def find_neighboring_voxels(crt_indice, features, M, manhattan_dist):
+    start_time = time.time()
+
+    # 获取体素数量和特征通道数
+    N, C = features.shape
+
+    # 计算曼哈顿距离并转换为浮点类型
+    coord_diff = crt_indice[:, None, :] - crt_indice[None, :, :]  # (N, N, 3)
+    manhattan_distances = coord_diff.abs().sum(dim=-1).float()  # (N, N)
+
+    # 找到在曼哈顿距离范围内的体素
+    within_range = manhattan_distances <= manhattan_dist
+    manhattan_distances[~within_range] = float('inf')  # 将超出范围的距离设为 inf
+
+    # 对每个体素选择最小距离的 M 个体素
+    distances, indices = torch.topk(-manhattan_distances, k=M, largest=True)
+    indices = indices.masked_fill(distances == -float('inf'), -1)  # 将无效索引填充为 -1
+
+    # 初始化存储张量并确保数据类型匹配
+    neighboring_coords = torch.zeros((N, M, 3), dtype=crt_indice.dtype, device=crt_indice.device)
+    neighboring_features = torch.zeros((N, M, C), dtype=features.dtype, device=features.device)
+
+    # 只填充有效的相邻体素
+    valid_mask = indices >= 0  # 有效体素掩码
+    neighboring_coords[valid_mask] = crt_indice[indices[valid_mask]]
+    neighboring_features[valid_mask] = features[indices[valid_mask]]
+
+    # 结束计时
+    end_time = time.time()
+    # print(f"Execution time: {end_time - start_time:.4f} seconds")
+
+    return neighboring_coords, neighboring_features

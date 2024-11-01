@@ -23,9 +23,9 @@ def load_view_point(pcd, filename):
 
 
 if __name__ == "__main__":
-    # pc_path = '/home/xrd/PycharmProjects/VPfusion/data/nuscenes/v1.0-trainval/samples/LIDAR_TOP/n008-2018-05-21-11-06-59-0400__LIDAR_TOP__1526915265947124.pcd.bin'
-    # points = np.fromfile(str(pc_path), dtype=np.float32).reshape(-1, 5)  # 5 for nuscenes
-    pc_path = '/media/xrd/本地磁盘/data/points/000001.bin'
+    pc_path = '/home/xrd/PycharmProjects/VPfusion/data/nuscenes/v1.0-trainval/samples/LIDAR_TOP/n008-2018-05-21-11-06-59-0400__LIDAR_TOP__1526915265947124.pcd.bin'
+    points = np.fromfile(str(pc_path), dtype=np.float32).reshape(-1, 5)  # 5 for nuscenes
+    # pc_path = '/media/xrd/本地磁盘/data/points/000001.bin'
     points = np.fromfile(str(pc_path), dtype=np.float64).reshape(-1, 4)  # 4 for kitti
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points[:, :3])  # 传入自己当前的pcd文件

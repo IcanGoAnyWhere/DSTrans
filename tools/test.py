@@ -20,14 +20,14 @@ from pcdet.utils import common_utils
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/DS_Trans.yaml',
+    parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/pv_rcnn.yaml',
                         help='specify the config for training')
-    parser.add_argument('--batch_size', type=int, default=1, required=False, help='batch size for training')
+    parser.add_argument('--batch_size', type=int, default=6, required=False, help='batch size for training')
     parser.add_argument('--workers', type=int, default=8, help='number of workers for dataloader')
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
     # ../output/kitti_models/VPfusion_kitti/default/ckpt/
     parser.add_argument('--ckpt', type=str,
-                        default='../output/kitti_models/DS_Trans/default/ckpt/checkpoint_epoch_16.pth',
+                        default='../output/kitti_models/pv_rcnn_8369.pth',
                         help='checkpoint to start from')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')

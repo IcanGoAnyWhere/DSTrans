@@ -3,7 +3,6 @@ DATA_PATH: '../data/kitti'
 
 POINT_CLOUD_RANGE: [0, -40, -3, 70.4, 40, 1]
 
-
 DATA_SPLIT: {
     'train': train,
     'test': val
@@ -14,8 +13,8 @@ INFO_PATH: {
     'test': [kitti_infos_val.pkl],
 }
 
-GET_ITEM_LIST: ["points","images", "calib_matricies"]
-FOV_POINTS_ONLY: False
+GET_ITEM_LIST: ["points"]
+FOV_POINTS_ONLY: True
 
 DATA_AUGMENTOR:
     DISABLE_AUG_LIST: ['placeholder']
@@ -63,7 +62,7 @@ DATA_PROCESSOR:
       }
 
     - NAME: transform_points_to_voxels
-      VOXEL_SIZE: [0.1, 0.1, 0.1]
+      VOXEL_SIZE: [0.05, 0.05, 0.1]
       MAX_POINTS_PER_VOXEL: 5
       MAX_NUMBER_OF_VOXELS: {
         'train': 16000,

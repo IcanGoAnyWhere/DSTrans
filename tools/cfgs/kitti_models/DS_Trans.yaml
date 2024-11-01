@@ -1,7 +1,7 @@
 CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
 DATA_CONFIG:
-    _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset_LI.yaml
+    _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset_dstrans.yaml
     DATA_AUGMENTOR:
         DISABLE_AUG_LIST: ['placeholder']
         AUG_CONFIG_LIST:
@@ -52,7 +52,7 @@ MODEL:
     CROSS_SCALE_TRANS:
         NAME: cross_scale_trans
         D_QUERY: 64
-        N_HEADS: 6
+        N_HEADS: 2
         N_POINTS: 26
         D_backbone: [16, 32, 64, 64]
         Dropout: 0.1
@@ -251,7 +251,7 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 1
-    NUM_EPOCHS: 10
+    NUM_EPOCHS: 40
 
     OPTIMIZER: adam_onecycle
     LR: 0.01

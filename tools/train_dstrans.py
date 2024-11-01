@@ -20,13 +20,13 @@ from torchvision._internally_replaced_utils import load_state_dict_from_url
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    # parser.add_argument('--cfg_file', type=str, default='cfgs/nuscenes_models/pv_rcnn_nuscenes.yaml',
-    #                     help='specify the config for training')
-    parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/DS_Trans.yaml',
+    parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/DS_Trans_v2.yaml',
                         help='specify the config for training')
+    # parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/pv_rcnn.yaml',
+    #                     help='specify the config for training')
     parser.add_argument('--batch_size', type=int, default=1, required=False, help='batch size for training')
     parser.add_argument('--epochs', type=int, default=None, required=False, help='number of epochs to train for')
-    parser.add_argument('--workers', type=int, default=8, help='number of workers for dataloader')
+    parser.add_argument('--workers', type=int, default=2, help='number of workers for dataloader')
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
     # '../output/kitti_models/VPfusionRCNN_kitti/default/ckpt/mfa-55.pth'
     parser.add_argument('--ckpt', type=str,

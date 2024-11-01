@@ -4,7 +4,8 @@ import time
 from pathlib import Path
 
 
-import open3d
+import open3d as o3d
+from open3d import geometry as o3d_geometry
 from visual_utils import open3d_vis_utils as V
 OPEN3D_FLAG = True
 # except:
@@ -65,6 +66,68 @@ class DemoDataset(DatasetTemplate):
         return data_dict
 
 
+import numpy as np
+
+import numpy as np
+
+import numpy as np
+
+
+def points_in_boxes(points, boxes):
+    # points: (N, 3) array of points
+    # boxes: (1, M, 7) array of boxes with [x, y, z, dx, dy, dz, yaw]
+    # 首先处理boxes的维度，确保它是 (M, 7)
+    boxes = boxes.squeeze(0)  # 移除第一维，使boxes成为 (M, 7)
+
+    centers = boxes[:, :3]
+    lengths = boxes[:, 3:6]
+    yaws = boxes[:, 6]
+
+    cos_yaw = np.cos(yaws)
+    sin_yaw = np.sin(yaws)
+
+    # 扩展 points 维度
+    points_expanded = np.expand_dims(points, 1)  # (N, 1, 3)
+
+    # 计算 points 在 boxes 坐标系中的位置
+    dx = points_expanded[:, :, 0] - centers[:, 0]
+    dy = points_expanded[:, :, 1] - centers[:, 1]
+    dz = points_expanded[:, :, 2] - centers[:, 2]
+
+    p_x = dx * cos_yaw - dy * sin_yaw
+    p_y = dx * sin_yaw + dy * cos_yaw
+    p_z = dz
+
+    # 检查点是否在框内
+    mask_x = np.abs(p_x) <= lengths[:, 0] / 2
+    mask_y = np.abs(p_y) <= lengths[:, 1] / 2
+    mask_z = np.abs(p_z) <= lengths[:, 2] / 2
+
+    mask = mask_x & mask_y & mask_z
+    return np.any(mask, axis=1)  # 检查每个点是否在任何框内
+
+
+# 示例使用方式
+# points = np.random.rand(100, 3) * 100  # 随机生成点
+# boxes = np.array([[[50, 50, 50, 20, 20, 20, 0]]])  # 单个框，无旋转
+# mask = points_in_boxes(points, boxes)
+# foreground_points = points[mask]
+
+
+# # 简单测试
+# points = np.array([[1, 2, 3], [4, 5, 6], [1.5, 2.5, 3.5]])
+# boxes = np.array([[[2, 2, 3, 2, 2, 2, 0]]])  # 单个框
+# mask = points_in_boxes(points, boxes)
+# print("Filtered points:", points[mask])
+
+
+# 示例使用方式
+# points = np.random.rand(100, 3) * 100  # 随机生成点
+# boxes = np.array([[[50, 50, 50, 20, 20, 20, 0.5]]])  # 单个框，无旋转
+# mask = points_in_boxes(points, boxes)
+# foreground_points = points[mask]
+
+
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     # parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/pv_rcnn.yaml',
@@ -92,14 +155,10 @@ def parse_config():
 
 
 def main():
+
     args, cfg = parse_config()
     logger = common_utils.create_logger()
     logger.info('-----------------Quick Demo of OpenPCDet-------------------------')
-
-    # demo_dataset = DemoDataset(
-    #     dataset_cfg=cfg.DATA_CONFIG, class_names=cfg.CLASS_NAMES, training=False,
-    #     root_path=Path(args.data_path), logger=logger
-    # )
 
     if cfg['DATA_CONFIG'].DATASET == 'KittiDataset':
         demo_dataset = KittiDataset_demo(
@@ -114,51 +173,52 @@ def main():
 
     logger.info(f'Total number of samples: \t{len(demo_dataset)}')
 
-    model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=demo_dataset)
-    total = sum([param.nelement() for param in model.parameters()])
-    print('Number of patameters: %.4fM' %(total/1e6))
-    checkpoint = torch.load(args.ckpt)
-
-    model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=True)
-
-    model.cuda()
-    model.eval()
-
-    file_dir = args.data_path +'/capture/'
-    if os.path.exists(file_dir) is False:
+    file_dir = args.data_path + '/capture/'
+    if not os.path.exists(file_dir):
         os.mkdir(file_dir)
-    with torch.no_grad():
-        vis = open3d.visualization.Visualizer()
-        vis.create_window(window_name = 'results', width = 800, height=600,  visible=True)
 
-        for idx, data_dict in enumerate(demo_dataset):
-            logger.info(f'Visualized sample index: \t{idx + 1}')
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(window_name='results', width=800, height=600, visible=True)
+
+    # 定义四种颜色
+    colors = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 1, 1]])
+
+    for idx in range(len(demo_dataset) - 3):  # 确保有足够的帧可以显示
+        vis.clear_geometries()
+        for i in range(4):  # 处理连续四帧
+            data_dict = demo_dataset[idx + i]
             data_dict = demo_dataset.collate_batch([data_dict])
-            load_data_to_gpu(data_dict)
+            points = np.array(data_dict['points'][:, 1:4])
 
-            start_time = time.time()
-            pred_dicts, _ = model.forward(data_dict)
-            end_time = time.time()
-            run_time = end_time - start_time
-            print(run_time)
+            # 过滤背景点
+            foreground_mask = points_in_boxes(points, np.array(data_dict['gt_boxes']))
+            foreground_points = points[foreground_mask]
 
-            V.draw_scenes(
-                 points=data_dict['points'][:, 1:],vis = vis,root_path=args.data_path,
-                ref_boxes=pred_dicts[0]['pred_boxes'],
-                ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
-            )
-
-            # time.sleep(1)
+            # 创建点云对象
+            pcd = o3d_geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(foreground_points)
 
 
-            vis.capture_screen_image(file_dir + "%s" % idx + ".jpg", do_render=True)
-            vis.clear_geometries()
+            # 设置当前帧的颜色
+            pcd.colors = o3d.utility.Vector3dVector(np.tile(colors[i], (len(pcd.points), 1)))
 
-            if not OPEN3D_FLAG:
-                mlab.show(stop=True)     
+            vis.get_render_option().point_size = 1.5
+            vis.add_geometry(pcd)
+            vis.update_geometry(pcd)
+        # 改变视角
+        ctr = vis.get_view_control()
+        pc_path = args.data_path + '/viewpoint.json'
+        param = o3d.io.read_pinhole_camera_parameters(pc_path)
+        ctr.convert_from_pinhole_camera_parameters(param)
+
+        vis.poll_events()
+        vis.update_renderer()
+        vis.capture_screen_image(file_dir + f"{idx}.jpg", do_render=True)
+
     vis.destroy_window()
     img2avi(file_dir)
     logger.info('Demo done.')
+
 
 
 if __name__ == '__main__':
