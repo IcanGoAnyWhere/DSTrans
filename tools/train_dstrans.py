@@ -20,7 +20,7 @@ from torchvision._internally_replaced_utils import load_state_dict_from_url
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/DS_Trans_v2.yaml',
+    parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/pv_rcnn.yaml',
                         help='specify the config for training')
     # parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/pv_rcnn.yaml',
     #                     help='specify the config for training')
@@ -39,6 +39,7 @@ def parse_config():
                         help='pretrained_model')
 
     parser.add_argument('--Breeze', type=str,
+
                         default=False,
                         help='Breeze_model')
 
