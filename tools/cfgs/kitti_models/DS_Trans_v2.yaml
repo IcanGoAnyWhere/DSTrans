@@ -53,7 +53,7 @@ MODEL:
         NAME: cross_scale_trans
         D_embed: 32
         N_HEADS: 4
-        N_POINTS: [4,4,4,4]
+        N_POINTS: [5,5,5,5]
         Dist: [32,16,8,4]
         D_backbone: [16, 32, 64, 64]
         Dropout: 0.1
@@ -135,7 +135,7 @@ MODEL:
     PFE:
         NAME: VoxelSetAbstraction
         POINT_SOURCE: raw_points
-        NUM_KEYPOINTS: 4096
+        NUM_KEYPOINTS: 2048
         NUM_OUTPUT_FEATURES: 128
         SAMPLE_METHOD: FPS
 

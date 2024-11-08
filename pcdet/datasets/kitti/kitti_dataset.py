@@ -246,6 +246,7 @@ class KittiDataset(DatasetTemplate):
         val_flag_merge = np.logical_and(val_flag_1, val_flag_2)
         pts_valid_flag = np.logical_and(val_flag_merge, pts_rect_depth >= 0)
 
+
         return pts_valid_flag
 
     def get_infos(self, num_workers=4, has_label=True, count_inside_pts=True, sample_id_list=None):
@@ -477,7 +478,7 @@ class KittiDataset(DatasetTemplate):
         info = copy.deepcopy(self.kitti_infos[index])
 
         sample_idx = info['point_cloud']['lidar_idx']
-        # sample_idx = '000076'
+        # sample_idx = '007481'
         img_shape = info['image']['image_shape']
         calib, calib_file = self.get_calib(sample_idx)
         get_item_list = self.dataset_cfg.get('GET_ITEM_LIST', ['points'])
@@ -514,6 +515,13 @@ class KittiDataset(DatasetTemplate):
             # noise = np.concatenate((noise, zeros), axis=1)
             # points += noise
 
+
+
+            if self.dataset_cfg.FOV_POINTS_ONLY:
+                pts_rect = calib.lidar_to_rect(points[:, 0:3])
+                fov_flag = self.get_fov_flag(pts_rect, img_shape, calib)
+                points = points[fov_flag]
+
             # visualize_point = points[:,0:3]
             # pcd_point = o3d.geometry.PointCloud()
             # pcd_point.points = o3d.utility.Vector3dVector(visualize_point)
@@ -522,11 +530,6 @@ class KittiDataset(DatasetTemplate):
             #                                   width=1024, height=768,
             #                                   left=50, top=50,
             #                                   mesh_show_back_face=False)
-
-            if self.dataset_cfg.FOV_POINTS_ONLY:
-                pts_rect = calib.lidar_to_rect(points[:, 0:3])
-                fov_flag = self.get_fov_flag(pts_rect, img_shape, calib)
-                points = points[fov_flag]
 
 
             input_dict['points'] = points

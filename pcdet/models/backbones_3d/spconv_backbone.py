@@ -140,7 +140,6 @@ class VoxelBackBone8x(nn.Module):
         voxel_features, voxel_coords = batch_dict['voxel_features'], batch_dict['voxel_coords']
         batch_size = batch_dict['batch_size']
 
-        # with torch.no_grad():
         input_sp_tensor = spconv.SparseConvTensor(
             features=voxel_features,
             indices=voxel_coords.int(),
@@ -149,7 +148,6 @@ class VoxelBackBone8x(nn.Module):
         )
 
         x = self.conv_input(input_sp_tensor)
-
         x_conv1 = self.conv1(x)
         x_conv2 = self.conv2(x_conv1)
         x_conv3 = self.conv3(x_conv2)

@@ -70,7 +70,7 @@ def build_dataloader(dataset_cfg, class_names, batch_size, dist, root_path=None,
     dataloader = DataLoader(
         dataset, batch_size=batch_size, pin_memory=True, num_workers=workers,
         shuffle=(sampler is None) and training, collate_fn=dataset.collate_batch,
-        drop_last=False, sampler=sampler, timeout=0
+        drop_last=False, sampler=sampler, timeout=0, worker_init_fn=common_utils.worker_init_fn
     )
 
     return dataset, dataloader, sampler

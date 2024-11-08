@@ -11,6 +11,7 @@ def find_neighboring_voxels(crt_indice, features, M, manhattan_dist):
     # 计算曼哈顿距离并转换为浮点类型
     coord_diff = crt_indice[:, None, :] - crt_indice[None, :, :]  # (N, N, 3)
     manhattan_distances = coord_diff.abs().sum(dim=-1).float()  # (N, N)
+    print(f" size: {manhattan_distances.element_size() * manhattan_distances.nelement()} bytes")
 
     # 找到在曼哈顿距离范围内的体素
     within_range = manhattan_distances <= manhattan_dist
@@ -50,12 +51,15 @@ if __name__ == "__main__":
     D = 10        # 曼哈顿距离
 
     # 随机生成数据
-    crt_indice = torch.randint(0, 100, (N, 3)).cuda()
+    crt_indice = torch.randint(0, 100, (N, 3)).cuda().float()
     features = torch.randn(N, C).cuda()
 
 
     # 调用函数
     neighboring_coords, neighboring_features = find_neighboring_voxels(crt_indice, features, M, D)
     print(neighboring_coords.shape)
+
+
+
 
 

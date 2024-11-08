@@ -20,7 +20,7 @@ from torchvision._internally_replaced_utils import load_state_dict_from_url
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/pv_rcnn.yaml',
+    parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/DS_Trans_v2.yaml',
                         help='specify the config for training')
     # parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/pv_rcnn.yaml',
     #                     help='specify the config for training')
@@ -93,6 +93,7 @@ def main():
     if args.fix_random_seed:
         common_utils.set_random_seed(3407)
 
+
     output_dir = cfg.ROOT_DIR / 'output' / cfg.EXP_GROUP_PATH / cfg.TAG / args.extra_tag
     ckpt_dir = output_dir / 'ckpt'
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -134,6 +135,9 @@ def main():
     model.cuda()
 
     optimizer = build_optimizer(model, cfg.OPTIMIZATION)
+
+    if args.fix_random_seed:
+        common_utils.set_random_seed(3407)
 
     # load checkpoint if it is possible
     start_epoch = it = 0

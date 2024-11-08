@@ -15,6 +15,12 @@ except:
     pass
 
 class cross_scale_trans(nn.Module):
+    """
+    Use muti-level transformer encoder to get local attention with different QKV paras.
+    """
+
+
+
     def __init__(self, model_cfg):
         super().__init__()
 
@@ -23,9 +29,7 @@ class cross_scale_trans(nn.Module):
         self.d_chl = model_cfg.D_backbone
         self.n_levels = 4
         self.dist = model_cfg.Dist
-
         self.d_model = model_cfg.D_embed
-
 
         self.input_proj = nn.ModuleList()
         self.sampling_offsets = nn.ModuleList()
@@ -59,7 +63,6 @@ class cross_scale_trans(nn.Module):
             self.input_proj.append(nn.Sequential(
                 nn.Linear(self.d_chl[i], self.d_model)
             ))
-
             self.query_proj.append(nn.Linear(self.d_model, self.d_model))
             self.value_proj.append(nn.Linear(self.d_model, self.d_model))
             self.key_proj.append(nn.Linear(self.d_model, self.d_model))

@@ -18,6 +18,7 @@ import os
 from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.datasets import DatasetTemplate
 from pcdet.datasets.kitti.kitti_dataset_demo import KittiDataset_demo
+from pcdet.datasets.kitti.kitti_dataset import KittiDataset
 from pcdet.datasets.nuscenes.nuscenes_dataset import NuScenesDataset
 from pcdet.models import build_network, load_data_to_gpu
 from pcdet.utils import common_utils
@@ -49,7 +50,7 @@ class DemoDataset(DatasetTemplate):
 
     def __getitem__(self, index):
         if self.ext == '.bin':
-            points = np.fromfile(self.sample_file_list[index], dtype=np.float64).reshape(-1, 4) #float64 for real data, float32 for dataset
+            points = np.fromfile(self.sample_file_list[index], dtype=np.float32).reshape(-1, 4) #float64 for real data, float32 for dataset
         elif self.ext == '.npy':
             points = np.load(self.sample_file_list[index])
         else:
@@ -67,19 +68,19 @@ class DemoDataset(DatasetTemplate):
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    # parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/pv_rcnn.yaml',
-    #                     help='specify the config for demo')
-    # parser.add_argument('--data_path', type=str, default='../data/kitti',
-    #                     help='specify the point cloud data file or directory')
-
-    parser.add_argument('--cfg_file', type=str, default='cfgs/nuscenes_models/cbgs_pp_multihead.yaml',
+    parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/pv_rcnn.yaml',
                         help='specify the config for demo')
-    parser.add_argument('--data_path', type=str, default='../data/nuscenes',
+    parser.add_argument('--data_path', type=str, default='../data/kitti/testing/debug',
                         help='specify the point cloud data file or directory')
+
+    # parser.add_argument('--cfg_file', type=str, default='cfgs/nuscenes_models/cbgs_pp_multihead.yaml',
+    #                     help='specify the config for demo')
+    # parser.add_argument('--data_path', type=str, default='../data/nuscenes',
+    #                     help='specify the point cloud data file or directory')
 
     # '../output/kitti_models/VPfusionRCNN_kitti/default/ckpt/softmax_55_4096.pth'
     parser.add_argument('--ckpt', type=str,
-                        default='../output/pp_multihead_nds5823_updated.pth',
+                        default='../output/kitti_models/pv_rcnn_8369.pth',
                         help='specify the pretrained model')
 
     parser.add_argument('--ext', type=str, default='.bin', help='specify the extension of your point cloud data file')
@@ -96,21 +97,21 @@ def main():
     logger = common_utils.create_logger()
     logger.info('-----------------Quick Demo of OpenPCDet-------------------------')
 
-    # demo_dataset = DemoDataset(
-    #     dataset_cfg=cfg.DATA_CONFIG, class_names=cfg.CLASS_NAMES, training=False,
-    #     root_path=Path(args.data_path), logger=logger
-    # )
+    demo_dataset = DemoDataset(
+        dataset_cfg=cfg.DATA_CONFIG, class_names=cfg.CLASS_NAMES, training=False,
+        root_path=Path(args.data_path), logger=logger
+    )
 
-    if cfg['DATA_CONFIG'].DATASET == 'KittiDataset':
-        demo_dataset = KittiDataset_demo(
-            dataset_cfg=cfg.DATA_CONFIG, class_names=cfg.CLASS_NAMES, training=False,
-            root_path=Path(args.data_path), logger=logger
-        )
-    else:
-        demo_dataset = NuScenesDataset(
-            dataset_cfg=cfg.DATA_CONFIG, class_names=cfg.CLASS_NAMES, training=False,
-            root_path=Path(args.data_path), logger=logger
-        )
+    # if cfg['DATA_CONFIG'].DATASET == 'KittiDataset':
+    #     demo_dataset = KittiDataset(
+    #         dataset_cfg=cfg.DATA_CONFIG, class_names=cfg.CLASS_NAMES, training=False,
+    #         root_path=Path(args.data_path), logger=logger
+    #     )
+    # else:
+    #     demo_dataset = NuScenesDataset(
+    #         dataset_cfg=cfg.DATA_CONFIG, class_names=cfg.CLASS_NAMES, training=False,
+    #         root_path=Path(args.data_path), logger=logger
+    #     )
 
     logger.info(f'Total number of samples: \t{len(demo_dataset)}')
 

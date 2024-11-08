@@ -7,7 +7,7 @@ class DT_Trans(DetectorFusionTemplate):
     def __init__(self, model_cfg, num_class, dataset):
         super().__init__(model_cfg=model_cfg, num_class=num_class, dataset=dataset)
         self.module_topology = [
-                        'vfe', 'backbone_3d',
+                        'vfe',
             'cross_scale_trans',
             'map_to_bev_module', 'pfe','backbone_2d',
                         'dense_head', 'point_head', 'roi_head'
@@ -19,14 +19,21 @@ class DT_Trans(DetectorFusionTemplate):
             return None, model_info_dict
 
         Cross_Scale_Trans_module = backbones_3d.__all__[self.model_cfg.CROSS_SCALE_TRANS.NAME](
-            model_cfg=self.model_cfg.CROSS_SCALE_TRANS
+            model_cfg=self.model_cfg.CROSS_SCALE_TRANS,
+            input_channels=model_info_dict['num_point_features'],
+            grid_size=model_info_dict['grid_size'],
+            voxel_size=model_info_dict['voxel_size'],
+            point_cloud_range=model_info_dict['point_cloud_range']
         )
         model_info_dict['module_list'].append(Cross_Scale_Trans_module)
+        model_info_dict['num_point_features'] = Cross_Scale_Trans_module.num_point_features
+        model_info_dict['backbone_channels'] = Cross_Scale_Trans_module.backbone_channels \
+            if hasattr(Cross_Scale_Trans_module, 'backbone_channels') else None
         return Cross_Scale_Trans_module, model_info_dict
 
     def forward(self, batch_dict):
         batch_dict = self.vfe(batch_dict)
-        batch_dict = self.backbone_3d(batch_dict)
+        # batch_dict = self.backbone_3d(batch_dict)
         batch_dict = self.cross_scale_trans(batch_dict)
         batch_dict = self.map_to_bev_module(batch_dict)
         batch_dict = self.backbone_2d(batch_dict)

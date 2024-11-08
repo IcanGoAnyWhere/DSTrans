@@ -1,7 +1,7 @@
 from .pointnet2_backbone import PointNet2Backbone, PointNet2MSG
 from .spconv_backbone import VoxelBackBone8x, VoxelResBackBone8x
 from .spconv_unet import UNetV2
-from .cross_scale_trans_v2 import  cross_scale_trans
+from .cross_scale_trans_v4 import cross_scale_trans
 
 __all__ = {
     'VoxelBackBone8x': VoxelBackBone8x,

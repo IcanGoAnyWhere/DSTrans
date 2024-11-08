@@ -265,3 +265,8 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
+
+def worker_init_fn(worker_id):
+    np.random.seed(3407 + worker_id)
+    random.seed(3407 + worker_id)
