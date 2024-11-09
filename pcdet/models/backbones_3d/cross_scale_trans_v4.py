@@ -42,7 +42,7 @@ class cross_scale_trans(nn.Module):
         crt_indice = crt_indice[:, 1:4].float()
         positional_encodings = self.dynamic_pe(crt_indice / (crt_normalizer - 1))
         src = input_proj(features) + positional_encodings
-        neighboring_coords, neighboring_features = find_neighboring_voxels(
+        neighboring_coords, neighboring_features = find_neighboring_voxels_optimized(
             crt_indice, src, self.n_points[level], self.dist[level]
         )
         query, key_value = neighboring_features[:, 0:1].view(1, -1, self.d_model), \
@@ -153,6 +153,7 @@ class DynamicLearnablePositionalEncoding(nn.Module):
 
 
 def find_neighboring_voxels(crt_indice, features, M, manhattan_dist):
+
     start_time = time.time()
 
     # 获取体素数量和特征通道数
@@ -178,6 +179,45 @@ def find_neighboring_voxels(crt_indice, features, M, manhattan_dist):
     valid_mask = indices >= 0  # 有效体素掩码
     neighboring_coords[valid_mask] = crt_indice[indices[valid_mask]]
     neighboring_features[valid_mask] = features[indices[valid_mask]]
+
+    # 结束计时
+    end_time = time.time()
+    # print(f"Execution time: {end_time - start_time:.4f} seconds")
+
+    return neighboring_coords, neighboring_features
+
+def find_neighboring_voxels_optimized(crt_indice, features, M, manhattan_dist, batch_size=1024):
+    start_time = time.time()
+
+    # 获取体素数量和特征通道数
+    N, C = features.shape
+    device = crt_indice.device
+
+    # 初始化存储张量
+    neighboring_coords = torch.zeros((N, M, 3), dtype=crt_indice.dtype, device=device)
+    neighboring_features = torch.zeros((N, M, C), dtype=features.dtype, device=device)
+
+    # 分块处理
+    for i in range(0, N, batch_size):
+        end_i = min(i + batch_size, N)
+        crt_block = crt_indice[i:end_i]  # 当前块的索引
+        coord_diff = crt_block[:, None, :] - crt_indice[None, :, :]  # (batch_size, N, 3)
+
+        # 计算曼哈顿距离
+        manhattan_distances = coord_diff.abs().sum(dim=-1)  # (batch_size, N)
+
+        # 筛选出在曼哈顿距离范围内的体素
+        within_range = manhattan_distances <= manhattan_dist
+        manhattan_distances[~within_range] = float('inf')  # 超出范围的距离设为 inf
+
+        # 对每个体素选择最小距离的 M 个体素
+        distances, indices = torch.topk(-manhattan_distances, k=M, largest=True)
+        indices = indices.masked_fill(distances == -float('inf'), -1)  # 将无效索引填充为 -1
+
+        # 只填充有效的相邻体素
+        valid_mask = indices >= 0
+        neighboring_coords[i:end_i][valid_mask] = crt_indice[indices[valid_mask]]
+        neighboring_features[i:end_i][valid_mask] = features[indices[valid_mask]]
 
     # 结束计时
     end_time = time.time()
